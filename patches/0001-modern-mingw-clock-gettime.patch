@@ -1,0 +1,27 @@
+From 09ff4df9fdb13e435b89fdd2cdb678d182701362 Mon Sep 17 00:00:00 2001
+From: Robert David Graham <robert_david_graham@yahoo.com>
+Date: Thu, 16 Nov 2023 18:28:41 -0800
+Subject: [PATCH] Avoid the modern MinGW-w64 clock_gettime declaration
+
+Backport the relevant pixie-timer.c hunk from upstream commit 09ff4df9fdb1
+to the 1.3.2 release. The local Windows helper is not used outside this
+translation unit and must not shadow MinGW-w64's clock_gettime declaration.
+---
+ src/pixie-timer.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/pixie-timer.c b/src/pixie-timer.c
+index 525c878..5756b60 100644
+--- a/src/pixie-timer.c
++++ b/src/pixie-timer.c
+@@ -55,7 +55,7 @@ getFILETIMEoffset(void)
+ }
+ 
+ int
+-clock_gettime(int X, struct timeval *tv)
++win_clock_gettime(int X, struct timeval *tv)
+ {
+     LARGE_INTEGER           t;
+     FILETIME            f;
+-- 
+2.50.0

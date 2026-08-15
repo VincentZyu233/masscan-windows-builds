@@ -1,10 +1,12 @@
 # Masscan Windows Builds
 
+[English](README.md) | [简体中文](README.zh-cn.md)
+
 [![Build](https://github.com/VincentZyu233/masscan-windows-builds/actions/workflows/build.yml/badge.svg)](https://github.com/VincentZyu233/masscan-windows-builds/actions/workflows/build.yml)
 
 This repository provides reproducible Windows x64 builds and a dedicated Scoop bucket for [Masscan](https://github.com/robertdavidgraham/masscan).
 
-This is an independent distribution project and is not affiliated with or endorsed by the upstream Masscan project. Builds use an official upstream source archive pinned by SHA-256. Build logs, artifacts, release checksums, and GitHub artifact attestations are public.
+This is an independent distribution project and is not affiliated with or endorsed by the upstream Masscan project. Builds use an official upstream source archive pinned by SHA-256. Build logs, artifacts, release checksums, compatibility patches, and GitHub artifact attestations are public.
 
 ## Install with Scoop
 
@@ -25,10 +27,28 @@ masscan --iflist
 
 Some Masscan versions print valid `--version` output but exit with status code `1`. This does not by itself mean that the executable is broken; `--echo` is the primary no-scan health check used by this repository.
 
+## Build process
+
+```mermaid
+flowchart TD
+    A[Manual workflow dispatch] --> B[Download official 1.3.2 source]
+    B --> C[Verify source SHA-256]
+    C --> D[Apply audited upstream compatibility patch]
+    D --> E[Build with MinGW-w64]
+    E --> F[Verify echo and version output]
+    F --> G[Package executable, license, patch, and source record]
+    G --> H[Upload artifact and provenance attestation]
+    H --> I{Publish enabled?}
+    I -- No --> J[Finish with workflow artifact]
+    I -- Yes --> K[Create GitHub Release]
+    K --> L[Update Scoop manifest with release SHA-256]
+```
+
 ## Build provenance
 
 - Upstream source: `robertdavidgraham/masscan`
 - Upstream version: `1.3.2`
+- Compatibility patch: relevant MinGW fix backported from upstream commit `09ff4df9fdb13e435b89fdd2cdb678d182701362`
 - Target: Windows x64 with MinGW-w64
 - License: AGPL-3.0-only
 
@@ -40,10 +60,10 @@ The workflow first supports a non-publishing artifact build. A release is create
 scoop install git gcc make
 git clone --branch 1.3.2 --depth 1 https://github.com/robertdavidgraham/masscan.git
 cd masscan
-make
+make FLAGS2=
 ```
 
-The resulting executable is located at `bin\masscan.exe`. Npcap is still required at runtime.
+The upstream `1.3.2` source also needs the included modern MinGW compatibility patch when built with current toolchains. The resulting executable is located at `bin\masscan.exe`; Npcap is still required at runtime.
 
 ## Security
 
