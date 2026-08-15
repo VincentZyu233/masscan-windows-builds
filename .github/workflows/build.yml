@@ -32,7 +32,7 @@ jobs:
 
     steps:
       - name: Check out build metadata
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up MinGW-w64
         uses: msys2/setup-msys2@v2
@@ -113,7 +113,7 @@ jobs:
           exit 0
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: masscan-${{ env.UPSTREAM_VERSION }}-windows-x64
           path: |
@@ -128,7 +128,7 @@ jobs:
 
       - name: Publish GitHub Release
         if: ${{ inputs.publish }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.UPSTREAM_VERSION }}-${{ inputs.revision }}
           name: Masscan ${{ env.UPSTREAM_VERSION }} Windows build ${{ inputs.revision }}
