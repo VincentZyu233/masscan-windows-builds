@@ -1,6 +1,7 @@
 # Masscan Windows 构建
 
-[English](README.md) | [简体中文](README.zh-cn.md)
+> **[📖 English](README.md)**
+> **[📖 简体中文(大陆)](README.zh-cn.md)**
 
 [![构建状态](https://github.com/VincentZyu233/masscan-windows-builds/actions/workflows/build.yml/badge.svg)](https://github.com/VincentZyu233/masscan-windows-builds/actions/workflows/build.yml)
 
