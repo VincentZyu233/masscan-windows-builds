@@ -1,0 +1,135 @@
+name: Build Masscan for Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified artifact as a GitHub Release
+        required: true
+        type: boolean
+        default: false
+      revision:
+        description: Package revision appended to the upstream version
+        required: true
+        type: string
+        default: '1'
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_VERSION: '1.3.2'
+  UPSTREAM_SHA256: '0363e82c07e6ceee68a2da48acd0b2807391ead9a396cf9c70b53a2a901e3d5f'
+  ASSET_NAME: 'masscan-1.3.2-windows-x64.zip'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Check out build metadata
+        uses: actions/checkout@v4
+
+      - name: Set up MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            git
+            make
+            mingw-w64-x86_64-gcc
+
+      - name: Download and verify upstream source
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "masscan-$env:UPSTREAM_VERSION.tar.gz"
+          $sourceUrl = "https://github.com/robertdavidgraham/masscan/archive/refs/tags/$env:UPSTREAM_VERSION.tar.gz"
+          Invoke-WebRequest -Uri $sourceUrl -OutFile $archive
+          $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:UPSTREAM_SHA256) {
+            throw "Source hash mismatch: expected $env:UPSTREAM_SHA256, got $actualHash"
+          }
+          tar.exe -xf $archive -C $env:RUNNER_TEMP
+          "SOURCE_DIR=$env:RUNNER_TEMP\masscan-$env:UPSTREAM_VERSION" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build Masscan
+        shell: msys2 {0}
+        run: |
+          cd "$(cygpath -u "$SOURCE_DIR")"
+          make -j2 GITVER="$UPSTREAM_VERSION"
+          test -f bin/masscan.exe
+
+      - name: Verify and package executable
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $executable = Join-Path $env:SOURCE_DIR 'bin\masscan.exe'
+          $echoOutput = (& $executable --echo 2>&1 | Out-String)
+          $echoExitCode = $LASTEXITCODE
+          if ($echoExitCode -ne 0 -or $echoOutput -notmatch '(?im)^\s*rate\s*=') {
+            throw "Masscan --echo verification failed with exit code $echoExitCode"
+          }
+
+          $versionOutput = (& $executable --version 2>&1 | Out-String)
+          $versionExitCode = $LASTEXITCODE
+          if ($versionOutput -notmatch '(?im)^\s*Masscan version\s+\S+') {
+            throw "Masscan version verification failed with exit code $versionExitCode"
+          }
+
+          $packageDir = Join-Path $env:RUNNER_TEMP 'masscan-package'
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+          Copy-Item -LiteralPath $executable -Destination (Join-Path $packageDir 'masscan.exe')
+          Copy-Item -LiteralPath (Join-Path $env:SOURCE_DIR 'LICENSE') -Destination (Join-Path $packageDir 'LICENSE')
+          @"
+          Upstream: https://github.com/robertdavidgraham/masscan
+          Version: $env:UPSTREAM_VERSION
+          Source: https://github.com/robertdavidgraham/masscan/archive/refs/tags/$env:UPSTREAM_VERSION.tar.gz
+          Source SHA256: $env:UPSTREAM_SHA256
+          Builder: $env:GITHUB_REPOSITORY@$env:GITHUB_SHA
+          "@ | Set-Content -LiteralPath (Join-Path $packageDir 'SOURCE.txt') -Encoding utf8NoBOM
+
+          $assetPath = Join-Path $env:RUNNER_TEMP $env:ASSET_NAME
+          Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath $assetPath -CompressionLevel Optimal
+          $assetHash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksumPath = "$assetPath.sha256"
+          "$assetHash  $env:ASSET_NAME" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+          "ASSET_PATH=$assetPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CHECKSUM_PATH=$checksumPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ASSET_SHA256=$assetHash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Masscan version probe exit code: $versionExitCode"
+          Write-Host "Package SHA256: $assetHash"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: masscan-${{ env.UPSTREAM_VERSION }}-windows-x64
+          path: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.CHECKSUM_PATH }}
+          if-no-files-found: error
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: ${{ env.ASSET_PATH }}
+
+      - name: Publish GitHub Release
+        if: ${{ inputs.publish }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.UPSTREAM_VERSION }}-${{ inputs.revision }}
+          name: Masscan ${{ env.UPSTREAM_VERSION }} Windows build ${{ inputs.revision }}
+          body: |
+            Reproducible Windows x64 build of Masscan ${{ env.UPSTREAM_VERSION }} from the official upstream source archive.
+
+            Npcap is required at runtime and is not bundled with this package.
+            See `SOURCE.txt`, the attached SHA-256 checksum, and the GitHub artifact attestation for provenance.
+          files: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.CHECKSUM_PATH }}
+          fail_on_unmatched_files: true
